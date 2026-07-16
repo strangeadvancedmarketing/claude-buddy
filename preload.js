@@ -7,4 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setIgnoreMouseEvents: (ignore, options) => {
     ipcRenderer.send('set-ignore-mouse-events', ignore, options);
   },
+  closeBuddy: () => ipcRenderer.send('close-buddy'),
+  getWindowPosition: () => ipcRenderer.sendSync('get-window-position'),
+  moveWindow: (x, y) => ipcRenderer.send('move-window', x, y),
 });

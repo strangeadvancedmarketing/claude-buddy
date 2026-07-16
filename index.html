@@ -314,6 +314,7 @@
       margin-top: 2px;
       margin-left: -2px;
     }
+
   </style>
 </head>
 <body>
@@ -465,43 +466,56 @@
     // Initialize idle timer
     resetIdleTimer();
 
-    // Drag to move the window
-    let isDragging = false;
-    let dragStartX, dragStartY;
+    // Close button (X) — quits just Buddy; the Claude Code terminal keeps
+    // running. Anchored to the robot's head (not the window) so it sits ON him
+    // instead of floating in the empty top of the transparent window.
+    const closeBtn = document.createElement('div');
+    closeBtn.id = 'buddy-close';
+    closeBtn.textContent = '✕';
+    closeBtn.title = 'Close Buddy (your terminal stays running)';
+    closeBtn.style.cssText =
+      'position:absolute;top:16px;right:-2px;width:20px;height:20px;line-height:20px;' +
+      'text-align:center;border-radius:50%;background:rgba(0,0,0,0.55);color:#fff;' +
+      'font-size:12px;cursor:pointer;z-index:9999;' +
+      'font-family:system-ui,sans-serif;user-select:none;';
+    closeBtn.addEventListener('mouseenter', () => { closeBtn.style.background = 'rgba(220,60,70,0.95)'; });
+    closeBtn.addEventListener('mouseleave', () => { closeBtn.style.background = 'rgba(0,0,0,0.55)'; });
+    closeBtn.addEventListener('click', () => { if (window.electronAPI) window.electronAPI.closeBuddy(); });
+    robot.appendChild(closeBtn);
 
-    robot.addEventListener('mousedown', (e) => {
+    // Drag to move the window — renderer computes the new position from the
+    // mouse delta and asks main to move it (setPosition via IPC). Grab anywhere
+    // on the robot or the bubble.
+    let isDragging = false, winStart = null, mouseStart = null;
+
+    function startDrag(e) {
+      if (e.button !== 0 || !window.electronAPI) return;
+      if (e.target.closest('#buddy-close')) return;   // X stays clickable
       isDragging = true;
-      dragStartX = e.screenX;
-      dragStartY = e.screenY;
+      winStart = window.electronAPI.getWindowPosition();
+      mouseStart = { x: e.screenX, y: e.screenY };
       e.preventDefault();
-    });
+    }
+    robot.addEventListener('mousedown', startDrag);
+    bubble.addEventListener('mousedown', startDrag);
 
     document.addEventListener('mousemove', (e) => {
       if (!isDragging) return;
-      // Use Electron's window drag — we just need to move
-      // Since we can't directly move the window from renderer without ipcRenderer,
-      // we'll use the hack of triggering -webkit-app-region via CSS classes
+      window.electronAPI.moveWindow(
+        winStart.x + (e.screenX - mouseStart.x),
+        winStart.y + (e.screenY - mouseStart.y)
+      );
     });
+    document.addEventListener('mouseup', () => { isDragging = false; });
 
-    document.addEventListener('mouseup', () => {
-      isDragging = false;
-    });
-
-    // Better drag: use CSS -webkit-app-region on the robot only
-    robot.style.webkitAppRegion = 'drag';
-
-    // Prevent drag on interactive elements inside robot
-    document.querySelectorAll('div').forEach(el => {
-      if (el !== robot) {
-        // keep default
-      }
-    });
-
-    // Click-through on transparent areas
+    // Click-through on transparent areas (keep the widget live). While dragging,
+    // never toggle ignore — otherwise a fast mouse over a transparent pixel
+    // would drop the button and kill the drag mid-move.
     document.addEventListener('mousemove', (e) => {
-      if (!window.electronAPI) return;
+      if (!window.electronAPI || isDragging) return;
       const el = document.elementFromPoint(e.clientX, e.clientY);
-      const isWidget = el && (el === robot || el.closest('#robot') || el === bubble || el.closest('#bubble'));
+      const isWidget = el && (el === robot || el.closest('#robot') || el === bubble ||
+        el.closest('#bubble') || el === closeBtn);
       window.electronAPI.setIgnoreMouseEvents(!isWidget, { forward: true });
     });
   </script>
